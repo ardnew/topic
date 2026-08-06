@@ -4,12 +4,16 @@
 
 `topic` is an in-memory type-safe pub-sub broker using Go types as topics.
 
-Routing uses Go's type system, so subscribing to a specific type will receive 
-only values of that type.
-Subscribing to an interface type receives all published values that implement 
-that interface; e.g., subscribing to `any` receives all published values.
+It uses no reflection or serialization and achieves high throughput with
+zero heap allocations in many cases.
 
-To subscribe to topics of unrelated types, use `Receiver.From` to convert and 
+Routing uses Go's type system.
+Subscribing to a specific type will receive only values of that type.
+Subscribing to an interface type receives all published values whose type
+satisfies that interface;
+e.g., subscribing to `any` receives all published values.
+
+To subscribe to topics of unrelated types, use `Receiver.From` to convert and
 filter values.
 
 ## Usage
@@ -78,12 +82,12 @@ type.
 Publishing allocates no memory in the steady-state benchmarks. Cost grows with
 the number of subscribers.
 
-| Case | Time | Allocations |
-| --- | ---: | ---: |
-| No subscribers | 1.06 ns | 0 |
-| One direct subscriber | 34 ns | 0 |
-| Four direct subscribers | 115 ns | 0 |
-| Sixteen direct subscribers | 409 ns | 0 |
+| Case                       |    Time | Allocations |
+| :------------------------- | ------: | ----------: |
+| No subscribers             | 1.06 ns |           0 |
+| One direct subscriber      |   34 ns |           0 |
+| Four direct subscribers    |  115 ns |           0 |
+| Sixteen direct subscribers |  409 ns |           0 |
 
 These results used Go 1.27rc2 on an Apple M3 Pro. Run the benchmarks with:
 
