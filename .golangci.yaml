@@ -1,0 +1,33 @@
+version: "2"
+
+run:
+  timeout: "0"
+  issues-exit-code: 1
+  tests: true
+  build-tags: []
+#  modules-download-mode: "readonly"
+  allow-parallel-runners: true
+  allow-serial-runners: true
+  concurrency: 0
+
+output:
+  formats:
+    text:
+      path: stderr
+      print-linter-name: true
+      print-issued-lines: true
+      colors: true
+    # json:
+    #   path: stderr
+    tab:
+      path: stderr
+      print-linter-name: true
+      colors: true
+    # html:
+    #   path: stderr
+  path-prefix: github.com/ardnew/topic
+  sort-order:
+    - linter
+    - severity
+    - file
+  show-stats: true

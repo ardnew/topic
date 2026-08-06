@@ -1,0 +1,3 @@
+module github.com/ardnew/topic
+
+go 1.27rc2
