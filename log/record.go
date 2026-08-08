@@ -30,13 +30,13 @@ type Record[T any] struct {
 // Pass the returned option to [topic.Broker.Subscribe]. The option lets
 // Subscribe infer its receiver type without spelling Record[T] at the call
 // site. Automatic wrapping does not allocate during steady-state publication.
-func WithWrap[T any](level slog.Level) topic.Option[topic.Receiver[Record[T]]] {
+func WithWrap[T any](level slog.Level, skip int) topic.Option[topic.Receiver[Record[T]]] {
 	var callerSkip atomic.Int32
 	return func(r *topic.Receiver[Record[T]]) {
 		r.
 			From(AtLeast[T](level)).
 			From(func(value T) (Record[T], bool) {
-				return wrapPublished(level, value, &callerSkip), true
+				return wrapPublished(level, value, &callerSkip, skip), true
 			})
 	}
 }
@@ -45,8 +45,9 @@ func wrapPublished[T any](
 	level slog.Level,
 	topic T,
 	callerSkip *atomic.Int32,
+	userSkip int,
 ) Record[T] {
-	when, frame := capturePublish(callerSkip)
+	when, frame := capturePublish(callerSkip, userSkip)
 	return Record[T]{Topic: topic, Level: level, Time: when, Frame: frame}
 }
 
@@ -141,11 +142,11 @@ func capture(skip int) (time.Time, runtime.Frame) {
 // stack-depth constant.
 //
 //go:noinline
-func capturePublish(callerSkip *atomic.Int32) (time.Time, runtime.Frame) {
+func capturePublish(callerSkip *atomic.Int32, userSkip int) (time.Time, runtime.Frame) {
 	when := time.Now()
 	if skip := callerSkip.Load(); skip != 0 {
 		var pcs [1]uintptr
-		if n := runtime.Callers(int(skip), pcs[:]); n != 0 {
+		if n := runtime.Callers(int(skip) + userSkip, pcs[:]); n != 0 {
 			return when, frameForReturnPC(pcs[0])
 		}
 	}

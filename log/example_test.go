@@ -34,7 +34,7 @@ func ExampleWithWrap() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	// Subscribe infers log.Record[message] from the option.
-	topics := b.Subscribe(log.WithWrap[message](slog.LevelInfo)).Topics(ctx)
+	topics := b.Subscribe(log.WithWrap[message](slog.LevelInfo, 0)).Topics(ctx)
 
 	// Existing records below Info are filtered. A plain message is wrapped at
 	// Info with metadata captured at this Publish call.

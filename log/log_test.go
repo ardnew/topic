@@ -117,7 +117,7 @@ func TestBrokerPublishRecord(t *testing.T) {
 
 func TestWithWrapPlainTopicCapturesPublishCallSite(t *testing.T) {
 	var b topic.Broker
-	topics := b.Subscribe(WithWrap[string](slog.LevelInfo)).Topics(t.Context())
+	topics := b.Subscribe(WithWrap[string](slog.LevelInfo, 0)).Topics(t.Context())
 	_, file, line, _ := runtime.Caller(0)
 	b.Publish("ready")
 
@@ -150,7 +150,7 @@ func publishString(b *topic.Broker, value string) (string, int) {
 
 func TestWithWrapAllocations(t *testing.T) {
 	var b topic.Broker
-	topics := b.Subscribe(WithWrap[int](slog.LevelInfo)).Topics(t.Context())
+	topics := b.Subscribe(WithWrap[int](slog.LevelInfo, 0)).Topics(t.Context())
 	allocations := testing.AllocsPerRun(1000, func() {
 		b.Publish(42)
 		<-topics
@@ -162,7 +162,7 @@ func TestWithWrapAllocations(t *testing.T) {
 
 func TestWithWrapFiltersAndPreservesRecords(t *testing.T) {
 	var b topic.Broker
-	topics := b.Subscribe(WithWrap[string](slog.LevelInfo)).Topics(t.Context())
+	topics := b.Subscribe(WithWrap[string](slog.LevelInfo, 0)).Topics(t.Context())
 	b.Publish(Record[string]{Topic: "filtered", Level: slog.LevelDebug})
 	want := New(
 		slog.LevelWarn,
