@@ -132,6 +132,20 @@ func TestWithWrapPlainTopicCapturesPublishCallSite(t *testing.T) {
 		t.Fatalf("source = %s:%d, want %s:%d",
 			filepath.Base(got.Frame.File), got.Frame.Line, filepath.Base(file), line+1)
 	}
+
+	file, line = publishString(&b, "again")
+	got = receive(t, topics)
+	if got.Frame.File != file || got.Frame.Line != line {
+		t.Fatalf("cached source = %s:%d, want %s:%d",
+			filepath.Base(got.Frame.File), got.Frame.Line, filepath.Base(file), line)
+	}
+}
+
+//go:noinline
+func publishString(b *topic.Broker, value string) (string, int) {
+	_, file, line, _ := runtime.Caller(0)
+	b.Publish(value)
+	return file, line + 1
 }
 
 func TestWithWrapAllocations(t *testing.T) {

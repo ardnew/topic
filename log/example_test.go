@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"runtime"
 	"time"
 
 	"github.com/ardnew/topic"
@@ -38,9 +39,15 @@ func ExampleWithWrap() {
 	// Existing records below Info are filtered. A plain message is wrapped at
 	// Info with metadata captured at this Publish call.
 	b.Publish(log.Wrap(slog.LevelDebug, message{text: "filtered"}))
+	_, file, line, _ := runtime.Caller(0)
 	b.Publish(message{text: "ready"})
 	record := <-topics
-	fmt.Println(record.Topic.text, record.Level, !record.Time.IsZero(), record.Frame.Line > 0)
+	fmt.Println(
+		record.Topic.text,
+		record.Level,
+		!record.Time.IsZero(),
+		record.Frame.File == file && record.Frame.Line == line+1,
+	)
 
 	// Output: ready INFO true true
 }
