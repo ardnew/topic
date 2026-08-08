@@ -1,9 +1,11 @@
 package log_test
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"github.com/ardnew/topic"
 	"github.com/ardnew/topic/log"
@@ -26,11 +28,79 @@ func ExampleWrap() {
 	// Output: ready INFO true true
 }
 
+func ExampleWithWrap() {
+	var b topic.Broker
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	// Subscribe infers log.Record[message] from the option.
+	topics := b.Subscribe(log.WithWrap[message](slog.LevelInfo)).Topics(ctx)
+
+	// Existing records below Info are filtered. A plain message is wrapped at
+	// Info with metadata captured at this Publish call.
+	b.Publish(log.Wrap(slog.LevelDebug, message{text: "filtered"}))
+	b.Publish(message{text: "ready"})
+	record := <-topics
+	fmt.Println(record.Topic.text, record.Level, !record.Time.IsZero(), record.Frame.Line > 0)
+
+	// Output: ready INFO true true
+}
+
+func ExampleNew() {
+	// T is inferred as message from the topic argument.
+	record := log.New(
+		slog.LevelInfo,
+		"request complete",
+		message{text: "served"},
+		slog.Group("http", slog.Int("status", 200)),
+	)
+
+	fmt.Println(record.Message, record.Topic.text, record.Attrs[0].Key)
+	// Output: request complete served http
+}
+
+func ExampleRecord_Slog() {
+	record := log.New(
+		slog.LevelWarn,
+		"request delayed",
+		message{text: "retrying"},
+		slog.Duration("delay", 2*time.Second),
+	)
+	slogRecord := record.Slog()
+
+	fmt.Println(slogRecord.Message, slogRecord.Level, slogRecord.NumAttrs())
+	// Output: request delayed WARN 1
+}
+
+func ExampleRecord_Handle() {
+	var output bytes.Buffer
+	handler := slog.NewTextHandler(&output, &slog.HandlerOptions{
+		ReplaceAttr: func(_ []string, attr slog.Attr) slog.Attr {
+			if attr.Key == slog.TimeKey {
+				return slog.Attr{}
+			}
+			return attr
+		},
+	}).WithGroup("app")
+	record := log.New(
+		slog.LevelInfo,
+		"request complete",
+		message{text: "served"},
+		slog.Group("http", slog.Int("status", 200)),
+	)
+
+	if err := record.Handle(context.Background(), handler); err != nil {
+		panic(err)
+	}
+	fmt.Print(output.String())
+	// Output: level=INFO msg="request complete" app.http.status=200
+}
+
 func ExampleAtLeast() {
 	var b topic.Broker
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	// AtLeast needs an explicit T because it cannot be inferred from its result.
+	// Use AtLeast directly when composing a receiver manually. WithWrap provides
+	// the shorter form for the common Record subscription.
 	topics := b.
 		Subscribe[log.Record[message]]().
 		From(log.AtLeast[message](slog.LevelInfo)).

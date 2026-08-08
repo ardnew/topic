@@ -13,6 +13,16 @@ const DefaultBufferLen = 64
 // Option configures a value of type T using the functional options pattern.
 type Option[T any] func(*T)
 
+// Valuer provides a topic value at publication time. [Broker.Publish] calls
+// TopicValue at most once, and only when the broker has subscribers. The
+// dynamic type of the returned value determines which subscribers receive it.
+//
+// Valuer is useful when constructing a topic is expensive or captures
+// time-sensitive information.
+type Valuer interface {
+	TopicValue() any
+}
+
 // Broker is a type-safe pub-sub dispatcher. Its zero value is ready for use.
 // A [Broker] must not be copied after first use.
 type Broker struct {
@@ -20,13 +30,22 @@ type Broker struct {
 	exact sync.Map
 }
 
-// Publish publishes topic.
+// Publish publishes topic. If topic implements [Valuer], Publish calls its
+// TopicValue method and publishes the returned value instead.
 func (b *Broker) Publish[T any](topic T) {
 	snapshot := b.reg.snapshot()
 	if snapshot == nil {
 		return
 	}
+	if _, ok := any(topic).(Valuer); ok {
+		b.publishValue(snapshot, evaluate(topic))
+		return
+	}
 	b.publish(snapshot, topic)
+}
+
+func evaluate[T any](topic T) any {
+	return any(topic).(Valuer).TopicValue()
 }
 
 func (b *Broker) publish[T any](snapshot *registrySnapshot, topic T) {
@@ -51,15 +70,10 @@ func (b *Broker) publish[T any](snapshot *registrySnapshot, topic T) {
 	}
 }
 
-// PublishLazy publishes the value returned by topic. It calls topic at most
-// once, and only when the [Broker] has subscribers. This is useful when building
-// a topic is expensive or captures time-sensitive information.
-func (b *Broker) PublishLazy[T any](topic func() T) {
-	snapshot := b.reg.snapshot()
-	if snapshot == nil {
-		return
+func (b *Broker) publishValue(snapshot *registrySnapshot, topic any) {
+	for _, s := range *snapshot {
+		s.send(topic)
 	}
-	b.publish(snapshot, topic())
 }
 
 // Subscribe begins configuring a subscription for topic type T. Options

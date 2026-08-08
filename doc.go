@@ -18,6 +18,10 @@
 // converts a source value to the receiver's topic type and decides whether the
 // converted value is delivered.
 //
+// A value implementing [Valuer] is evaluated by [Broker.Publish] only when the
+// broker has subscribers. This defers expensive or time-sensitive topic
+// construction without requiring a separate publication method.
+//
 // Subscriber channels have capacity [DefaultBufferLen]. Pass [WithBufferLen]
 // to [Broker.Subscribe] to override the capacity for that receiver. Delivery
 // remains non-blocking: a topic is dropped when the channel cannot accept it.

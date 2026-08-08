@@ -11,6 +11,16 @@ import (
 
 const testTimeout = 3 * time.Second
 
+type lazyTopic struct {
+	calls *int
+	value any
+}
+
+func (t lazyTopic) TopicValue() any {
+	*t.calls = *t.calls + 1
+	return t.value
+}
+
 func TestSubscribeDirect(t *testing.T) {
 	var b topic.Broker
 	topics := b.Subscribe[string]().Topics(t.Context())
@@ -37,7 +47,7 @@ func TestSubscribeDefaultBufferLen(t *testing.T) {
 func TestSubscribeAppliesOptions(t *testing.T) {
 	var b topic.Broker
 	var calls int
-	_ = b.Subscribe[int](func(*topic.Receiver[int]) { calls++ })
+	_ = b.Subscribe(func(*topic.Receiver[int]) { calls++ })
 	if calls != 1 {
 		t.Fatalf("option calls = %d, want 1", calls)
 	}
@@ -45,7 +55,7 @@ func TestSubscribeAppliesOptions(t *testing.T) {
 
 func TestWithBufferLen(t *testing.T) {
 	var b topic.Broker
-	topics := b.Subscribe[int](
+	topics := b.Subscribe(
 		topic.WithBufferLen[int](3),
 	).Topics(t.Context())
 	if got := cap(topics); got != 3 {
@@ -55,7 +65,7 @@ func TestWithBufferLen(t *testing.T) {
 
 func TestWithBufferLenLastOptionWins(t *testing.T) {
 	var b topic.Broker
-	topics := b.Subscribe[int](
+	topics := b.Subscribe(
 		topic.WithBufferLen[int](1),
 		topic.WithBufferLen[int](2),
 	).Topics(t.Context())
@@ -66,7 +76,7 @@ func TestWithBufferLenLastOptionWins(t *testing.T) {
 
 func TestWithBufferLenAppliesToReceiver(t *testing.T) {
 	var b topic.Broker
-	receiver := b.Subscribe[int](
+	receiver := b.Subscribe(
 		topic.WithBufferLen[int](1),
 	)
 	firstTopics := receiver.Topics(t.Context())
@@ -90,7 +100,7 @@ func TestWithBufferLenAppliesToReceiver(t *testing.T) {
 
 func TestWithBufferLenZero(t *testing.T) {
 	var b topic.Broker
-	topics := b.Subscribe[int](
+	topics := b.Subscribe(
 		topic.WithBufferLen[int](0),
 	).Topics(t.Context())
 	if got := cap(topics); got != 0 {
@@ -416,32 +426,26 @@ func TestBrokerZeroValue(t *testing.T) {
 	}
 }
 
-func TestPublishLazyWithoutSubscribers(t *testing.T) {
+func TestPublishValuerWithoutSubscribers(t *testing.T) {
 	var b topic.Broker
-	called := false
-	b.PublishLazy(func() string {
-		called = true
-		return "discarded"
-	})
+	calls := 0
+	b.Publish(lazyTopic{calls: &calls, value: "discarded"})
 
-	if called {
-		t.Fatal("topic factory called without subscribers")
+	if calls != 0 {
+		t.Fatalf("TopicValue calls = %d, want 0", calls)
 	}
 }
 
-func TestPublishLazyFanout(t *testing.T) {
+func TestPublishValuerFanout(t *testing.T) {
 	var b topic.Broker
 	firstTopics := b.Subscribe[string]().Topics(t.Context())
 	secondTopics := b.Subscribe[string]().Topics(t.Context())
 	calls := 0
 
-	b.PublishLazy(func() string {
-		calls++
-		return "shared"
-	})
+	b.Publish(&lazyTopic{calls: &calls, value: "shared"})
 
 	if calls != 1 {
-		t.Fatalf("topic factory calls = %d, want 1", calls)
+		t.Fatalf("TopicValue calls = %d, want 1", calls)
 	}
 	for i, topics := range []<-chan string{firstTopics, secondTopics} {
 		select {
@@ -452,6 +456,21 @@ func TestPublishLazyFanout(t *testing.T) {
 		case <-time.After(testTimeout):
 			t.Fatalf("subscriber %d timed out", i)
 		}
+	}
+}
+
+func TestPublishValuerAllocations(t *testing.T) {
+	var b topic.Broker
+	topics := b.Subscribe[string]().Topics(t.Context())
+	calls := 0
+	valuer := &lazyTopic{calls: &calls, value: "shared"}
+
+	allocations := testing.AllocsPerRun(1000, func() {
+		b.Publish(valuer)
+		<-topics
+	})
+	if allocations != 0 {
+		t.Fatalf("allocations = %v, want 0", allocations)
 	}
 }
 

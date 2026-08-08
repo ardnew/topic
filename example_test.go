@@ -23,6 +23,12 @@ type message struct {
 	text string
 }
 
+type lazyMessage func() message
+
+func (f lazyMessage) TopicValue() any {
+	return f()
+}
+
 func ExampleBroker_Publish() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -36,6 +42,21 @@ func ExampleBroker_Publish() {
 	fmt.Println(topic.text)
 	// Output:
 	// hello
+}
+
+func ExampleValuer() {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	var b topic.Broker
+	topics := b.Subscribe[message]().Topics(ctx)
+
+	b.Publish(lazyMessage(func() message {
+		return message{text: "evaluated when published"}
+	}))
+
+	fmt.Println(receive(topics).text)
+	// Output:
+	// evaluated when published
 }
 
 func ExampleWithBufferLen() {

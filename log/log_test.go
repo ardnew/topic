@@ -1,6 +1,10 @@
 package log
 
 import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"errors"
 	"log/slog"
 	"path/filepath"
 	"runtime"
@@ -49,6 +53,28 @@ func TestWrapCallSite(t *testing.T) {
 	}
 }
 
+func TestNewCallSite(t *testing.T) {
+	attrs := []slog.Attr{slog.String("state", "ready")}
+	_, file, line, _ := runtime.Caller(0)
+	record := New(slog.LevelInfo, "started", "topic", attrs...)
+	attrs[0] = slog.String("state", "changed")
+
+	if record.Topic != "topic" || record.Level != slog.LevelInfo ||
+		record.Message != "started" {
+		t.Fatalf("record = %+v", record)
+	}
+	if len(record.Attrs) != 1 || record.Attrs[0].Value.String() != "ready" {
+		t.Fatalf("attrs = %v, want copied state=ready", record.Attrs)
+	}
+	if record.Time.IsZero() {
+		t.Fatal("timestamp is zero")
+	}
+	if record.Frame.File != file || record.Frame.Line != line+1 {
+		t.Fatalf("source = %s:%d, want %s:%d",
+			record.Frame.File, record.Frame.Line, file, line+1)
+	}
+}
+
 func TestBrokerPublishCallSite(t *testing.T) {
 	var b topic.Broker
 	topics := b.Subscribe[Record[string]]().Topics(t.Context())
@@ -81,8 +107,192 @@ func TestBrokerPublishRecord(t *testing.T) {
 
 	b.Publish(want)
 
-	if got := receive(t, topics); got != want {
+	got := receive(t, topics)
+	if got.Topic != want.Topic || got.Level != want.Level ||
+		!got.Time.Equal(want.Time) || got.Frame != want.Frame ||
+		got.Message != want.Message || len(got.Attrs) != 0 {
 		t.Fatalf("record = %+v, want %+v", got, want)
+	}
+}
+
+func TestWithWrapPlainTopicCapturesPublishCallSite(t *testing.T) {
+	var b topic.Broker
+	topics := b.Subscribe(WithWrap[string](slog.LevelInfo)).Topics(t.Context())
+	_, file, line, _ := runtime.Caller(0)
+	b.Publish("ready")
+
+	got := receive(t, topics)
+	if got.Topic != "ready" || got.Level != slog.LevelInfo {
+		t.Fatalf("record = %+v", got)
+	}
+	if got.Time.IsZero() {
+		t.Fatal("timestamp is zero")
+	}
+	if got.Frame.File != file || got.Frame.Line != line+1 {
+		t.Fatalf("source = %s:%d, want %s:%d",
+			filepath.Base(got.Frame.File), got.Frame.Line, filepath.Base(file), line+1)
+	}
+}
+
+func TestWithWrapAllocations(t *testing.T) {
+	var b topic.Broker
+	topics := b.Subscribe(WithWrap[int](slog.LevelInfo)).Topics(t.Context())
+	allocations := testing.AllocsPerRun(1000, func() {
+		b.Publish(42)
+		<-topics
+	})
+	if allocations != 0 {
+		t.Fatalf("allocations = %v, want 0", allocations)
+	}
+}
+
+func TestWithWrapFiltersAndPreservesRecords(t *testing.T) {
+	var b topic.Broker
+	topics := b.Subscribe(WithWrap[string](slog.LevelInfo)).Topics(t.Context())
+	b.Publish(Record[string]{Topic: "filtered", Level: slog.LevelDebug})
+	want := New(
+		slog.LevelWarn,
+		"delivered",
+		"preserved",
+		slog.String("state", "original"),
+	)
+	b.Publish(want)
+
+	got := receive(t, topics)
+	if got.Topic != want.Topic || got.Level != want.Level ||
+		!got.Time.Equal(want.Time) || got.Frame != want.Frame ||
+		got.Message != want.Message || len(got.Attrs) != 1 ||
+		!got.Attrs[0].Equal(want.Attrs[0]) {
+		t.Fatalf("record = %+v, want %+v", got, want)
+	}
+}
+
+func TestRecordSlog(t *testing.T) {
+	record := New(
+		slog.LevelWarn,
+		"slow request",
+		"request",
+		slog.Group("http", slog.Int("status", 503)),
+	)
+
+	first := record.Slog()
+	second := record.Slog()
+	first.AddAttrs(slog.String("copy", "first"))
+
+	if first.Time != record.Time || first.Level != record.Level ||
+		first.Message != record.Message || first.PC != record.Frame.PC {
+		t.Fatalf("slog record = %+v, source = %+v", first, record)
+	}
+	if first.NumAttrs() != 2 || second.NumAttrs() != 1 {
+		t.Fatalf("attribute counts = %d and %d, want 2 and 1",
+			first.NumAttrs(), second.NumAttrs())
+	}
+	source := second.Source()
+	if source == nil || source.File != record.Frame.File ||
+		source.Line != record.Frame.Line {
+		t.Fatalf("source = %+v, want %s:%d",
+			source, record.Frame.File, record.Frame.Line)
+	}
+}
+
+type lazyLogValue struct {
+	calls *int
+}
+
+func (value lazyLogValue) LogValue() slog.Value {
+	*value.calls = *value.calls + 1
+	return slog.StringValue("resolved")
+}
+
+func TestRecordHandleJSONGroupsAndLazyValues(t *testing.T) {
+	var output bytes.Buffer
+	var min slog.LevelVar
+	min.Set(slog.LevelInfo)
+	handler := slog.NewJSONHandler(&output, &slog.HandlerOptions{Level: &min}).
+		WithGroup("component").
+		WithAttrs([]slog.Attr{slog.String("name", "lang")})
+	calls := 0
+
+	debug := New(
+		slog.LevelDebug,
+		"hidden",
+		"debug",
+		slog.Any("value", lazyLogValue{calls: &calls}),
+	)
+	if err := debug.Handle(t.Context(), handler); err != nil {
+		t.Fatalf("Handle(Debug) error = %v", err)
+	}
+	if calls != 0 || output.Len() != 0 {
+		t.Fatalf("disabled handler resolved %d values and wrote %q", calls, output.String())
+	}
+
+	info := New(
+		slog.LevelInfo,
+		"ready",
+		"info",
+		slog.Group(
+			"request",
+			slog.Int("id", 42),
+			slog.Any("value", lazyLogValue{calls: &calls}),
+		),
+	)
+	if err := info.Handle(t.Context(), handler); err != nil {
+		t.Fatalf("Handle(Info) error = %v", err)
+	}
+	if calls != 1 {
+		t.Fatalf("LogValue calls = %d, want 1", calls)
+	}
+
+	var entry map[string]any
+	if err := json.Unmarshal(output.Bytes(), &entry); err != nil {
+		t.Fatalf("JSON output = %q: %v", output.String(), err)
+	}
+	if entry["msg"] != "ready" || entry["level"] != "INFO" {
+		t.Fatalf("entry = %#v", entry)
+	}
+	component, ok := entry["component"].(map[string]any)
+	if !ok || component["name"] != "lang" {
+		t.Fatalf("component = %#v", entry["component"])
+	}
+	request, ok := component["request"].(map[string]any)
+	if !ok || request["id"] != float64(42) || request["value"] != "resolved" {
+		t.Fatalf("request = %#v", component["request"])
+	}
+}
+
+type failingHandler struct {
+	err        error
+	enabledCtx context.Context
+	handleCtx  context.Context
+}
+
+func (handler *failingHandler) Enabled(ctx context.Context, _ slog.Level) bool {
+	handler.enabledCtx = ctx
+	return true
+}
+
+func (handler *failingHandler) Handle(ctx context.Context, _ slog.Record) error {
+	handler.handleCtx = ctx
+	return handler.err
+}
+
+func (handler *failingHandler) WithAttrs([]slog.Attr) slog.Handler {
+	return handler
+}
+
+func (handler *failingHandler) WithGroup(string) slog.Handler {
+	return handler
+}
+
+func TestRecordHandleUsesBackgroundAndReturnsError(t *testing.T) {
+	want := errors.New("write failed")
+	handler := &failingHandler{err: want}
+
+	if err := New(slog.LevelError, "failed", "topic").Handle(nil, handler); !errors.Is(err, want) {
+		t.Fatalf("Handle error = %v, want %v", err, want)
+	}
+	if handler.enabledCtx == nil || handler.handleCtx == nil {
+		t.Fatal("nil context passed to handler")
 	}
 }
 
