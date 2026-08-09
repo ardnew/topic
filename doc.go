@@ -1,34 +1,26 @@
-// Package topic is an in-memory type-safe pub-sub broker.
+// Package topic provides an in-memory generic publish-subscribe broker.
 //
-// Topics are Go types, not values. Publishing a value of type M delivers an
-// unwrapped value to every subscriber whose topic type T is satisfied by M.
+// Go types are topics. Publishing a value delivers it unchanged to subscribers
+// of the same type and to subscribers of every interface the value implements.
+// A subscription to [any] receives every published value. Routing uses ordinary
+// Go type assertions without reflection or serialization.
 //
-// Routing uses ordinary Go type assertions without reflection, metadata,
-// wrappers, or serialization. Subscribing to an interface type T receives all
-// published values whose concrete types implement T; subscribing to [any]
-// receives all published values:
+//	var broker topic.Broker
+//	events := broker.Subscribe[Event]().Topics(ctx)
+//	broker.Publish(Event{Message: "ready"})
+//	event := <-events
 //
-//	readers := b.Subscribe[io.Reader]().Topics(ctx)
-//	b.Publish(strings.NewReader("ready"))
+// [Receiver.From] adds ordered conversion and filtering rules. The first rule
+// whose source type accepts a published value decides whether it is delivered;
+// if no rule matches, a direct type assertion to the subscribed type is
+// attempted.
 //
-//	var b topic.Broker
-//	topics := b.Subscribe[MyEvent]().Topics(ctx)
-//	b.Publish(MyEvent{Message: "ready"})
-//	topic := <-topics
-//	fmt.Println(topic.Message)
+// Delivery is non-blocking and isolated per subscriber. Channels have capacity
+// [DefaultBufferLen] unless [WithBufferLen] overrides it. A full channel drops
+// the value for that subscriber. Cancelling the context passed to
+// [Receiver.Topics] removes the subscription and closes its channel.
 //
-// Subscribers may adapt or filter topics using [Receiver.From]. Its callback
-// converts a source value to the receiver's topic type and decides whether the
-// converted value is delivered.
-//
-// Subscriber channels have capacity [DefaultBufferLen]. Pass [WithBufferLen]
-// to [Broker.Subscribe] to override the capacity for that receiver. Delivery
-// remains non-blocking: a topic is dropped when the channel cannot accept it.
-// A buffer length of zero creates an unbuffered channel, so delivery succeeds
-// only while a receiver is ready.
-//
-// Exact-type dispatch, pointer-to-interface dispatch, and pre-boxed interface
-// dispatch perform no heap allocations. An indirect value entering the
-// assignability fallback is boxed once per publication and shared across
-// fanout. Subscription setup allocates the channel and registration state.
+// Identical-type publication and pointer-to-interface publication perform no
+// steady-state heap allocations. Assignability checks for indirect values may
+// box the value once; that box is shared across subscriber fanout.
 package topic

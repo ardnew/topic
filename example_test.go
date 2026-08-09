@@ -67,7 +67,7 @@ type finish struct {
 	success bool
 }
 
-func ExampleBroker_Subscribe_multipleTopics() {
+func ExampleBroker_Subscribe_multipleTypes() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	var b topic.Broker
@@ -85,7 +85,7 @@ func ExampleBroker_Subscribe_multipleTopics() {
 	// true
 }
 
-func ExampleBroker_Subscribe_any() {
+func ExampleBroker_Subscribe_allTypes() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	var b topic.Broker
@@ -144,7 +144,7 @@ func ExampleReceiver_From_filter() {
 	// check this
 }
 
-func ExampleReceiver_From_directAndConverted() {
+func ExampleReceiver_From_mappingAndDirectDelivery() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	var b topic.Broker
@@ -168,4 +168,17 @@ func ExampleReceiver_From_directAndConverted() {
 	// Output:
 	// direct
 	// CONVERTED
+}
+
+func ExampleReceiver_Topics_cancellation() {
+	ctx, cancel := context.WithCancel(context.Background())
+	var broker topic.Broker
+	topics := broker.Subscribe[string]().Topics(ctx)
+
+	cancel()
+	_, open := <-topics
+	fmt.Println("open:", open)
+
+	// Output:
+	// open: false
 }

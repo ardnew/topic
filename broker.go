@@ -13,15 +13,15 @@ const DefaultBufferLen = 64
 // Option configures a value of type T using the functional options pattern.
 type Option[T any] func(*T)
 
-// Broker is a type-safe pub-sub dispatcher. Its zero value is ready for use.
-// A [Broker] must not be copied after first use.
+// Broker is a type-safe pub-sub dispatcher. Its zero value is ready for
+// concurrent use. A [Broker] must not be copied after first use.
 type Broker struct {
 	reg   registry
 	exact sync.Map
 }
 
-// Publish publishes topic to subscribers whose topic type is satisfied by
-// topic's dynamic type.
+// Publish sends topic to subscribers of its concrete type and to subscribers
+// of every interface its dynamic type implements. Delivery is non-blocking.
 func (b *Broker) Publish[T any](topic T) {
 	snapshot := b.reg.snapshot()
 	if snapshot == nil {
@@ -53,8 +53,9 @@ func (b *Broker) publish[T any](snapshot *registrySnapshot, topic T) {
 	}
 }
 
-// Subscribe begins configuring a subscription for topic type T. Options
-// configure the returned [Receiver].
+// Subscribe returns a receiver configured for topic type T. Options configure
+// the receiver; the subscription becomes active when [Receiver.Topics] is
+// called.
 func (b *Broker) Subscribe[T any](opts ...Option[Receiver[T]]) *Receiver[T] {
 	r := &Receiver[T]{broker: b, bufferLen: DefaultBufferLen}
 	for _, opt := range opts {

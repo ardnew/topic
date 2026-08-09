@@ -11,7 +11,7 @@ import (
 
 const testTimeout = 3 * time.Second
 
-func TestSubscribeDirect(t *testing.T) {
+func TestBrokerSubscribeDirect(t *testing.T) {
 	var b topic.Broker
 	topics := b.Subscribe[string]().Topics(t.Context())
 	b.Publish("hello")
@@ -26,7 +26,7 @@ func TestSubscribeDirect(t *testing.T) {
 	}
 }
 
-func TestSubscribeDefaultBufferLen(t *testing.T) {
+func TestBrokerSubscribeDefaultBufferLen(t *testing.T) {
 	var b topic.Broker
 	topics := b.Subscribe[int]().Topics(t.Context())
 	if got := cap(topics); got != topic.DefaultBufferLen {
@@ -34,7 +34,7 @@ func TestSubscribeDefaultBufferLen(t *testing.T) {
 	}
 }
 
-func TestSubscribeAppliesOptions(t *testing.T) {
+func TestBrokerSubscribeAppliesOptions(t *testing.T) {
 	var b topic.Broker
 	var calls int
 	_ = b.Subscribe(func(*topic.Receiver[int]) { calls++ })
@@ -152,7 +152,7 @@ func TestWithBufferLenPanicsForNegativeLength(t *testing.T) {
 	_ = topic.WithBufferLen[int](-1)
 }
 
-func TestSubscribeCancel(t *testing.T) {
+func TestReceiverTopicsClosesOnCancellation(t *testing.T) {
 	var b topic.Broker
 	ctx, cancel := context.WithCancel(t.Context())
 	topics := b.Subscribe[int]().Topics(ctx)
@@ -172,7 +172,7 @@ type source struct{ text string }
 
 type target struct{ summary string }
 
-func TestSubscribeFrom(t *testing.T) {
+func TestReceiverFromConverts(t *testing.T) {
 	var b topic.Broker
 	topics := b.
 		Subscribe[target]().
@@ -192,7 +192,7 @@ func TestSubscribeFrom(t *testing.T) {
 	}
 }
 
-func TestSubscribeFromReject(t *testing.T) {
+func TestReceiverFromRejects(t *testing.T) {
 	var b topic.Broker
 	topics := b.
 		Subscribe[target]().
@@ -210,7 +210,7 @@ func TestSubscribeFromReject(t *testing.T) {
 	}
 }
 
-func TestSubscribeUnrelated(t *testing.T) {
+func TestBrokerPublishIgnoresUnrelatedType(t *testing.T) {
 	var b topic.Broker
 	ctx := t.Context()
 
@@ -225,7 +225,7 @@ func TestSubscribeUnrelated(t *testing.T) {
 	}
 }
 
-func TestSubscribeFanout(t *testing.T) {
+func TestBrokerPublishFanout(t *testing.T) {
 	var b topic.Broker
 	ctx := t.Context()
 
@@ -253,7 +253,7 @@ type beta struct{ name string }
 func (a alpha) Name() string { return a.name }
 func (b beta) Name() string  { return b.name }
 
-func TestSubscribeInterface(t *testing.T) {
+func TestBrokerSubscribeInterface(t *testing.T) {
 	var b topic.Broker
 	topics := b.Subscribe[namer]().Topics(t.Context())
 	b.Publish(alpha{name: "alpha"})
@@ -274,7 +274,7 @@ func TestSubscribeInterface(t *testing.T) {
 	}
 }
 
-func TestSubscribeFromMultiple(t *testing.T) {
+func TestReceiverFromMultipleMappings(t *testing.T) {
 	var b topic.Broker
 	type sourceA struct{ value int }
 	type sourceB struct{ value int }
@@ -308,7 +308,7 @@ func TestSubscribeFromMultiple(t *testing.T) {
 	}
 }
 
-func TestSubscribeFromFirstInterfaceOwnsDecision(t *testing.T) {
+func TestReceiverFromFirstMatchingMappingOwnsDecision(t *testing.T) {
 	var b topic.Broker
 	topics := b.
 		Subscribe[target]().
@@ -332,7 +332,7 @@ func TestSubscribeFromFirstInterfaceOwnsDecision(t *testing.T) {
 	}
 }
 
-func TestSubscribeDirectAfterUnmatchedAdapter(t *testing.T) {
+func TestReceiverFromFallsBackToDirectAssignment(t *testing.T) {
 	var b topic.Broker
 	topics := b.
 		Subscribe[target]().
@@ -353,7 +353,7 @@ func TestSubscribeDirectAfterUnmatchedAdapter(t *testing.T) {
 	}
 }
 
-func TestPublishExactAllocations(t *testing.T) {
+func TestBrokerPublishIdenticalTypeAllocations(t *testing.T) {
 	var b topic.Broker
 	topics := b.Subscribe[smallAllocationTopic]().Topics(t.Context())
 	value := smallAllocationTopic{sequence: 1, enabled: true}
@@ -367,7 +367,7 @@ func TestPublishExactAllocations(t *testing.T) {
 	}
 }
 
-func TestPublishWithoutSubscribersAllocations(t *testing.T) {
+func TestBrokerPublishWithoutSubscribersAllocations(t *testing.T) {
 	var b topic.Broker
 	value := smallAllocationTopic{sequence: 1, enabled: true}
 
@@ -379,7 +379,7 @@ func TestPublishWithoutSubscribersAllocations(t *testing.T) {
 	}
 }
 
-func TestPublishUnmatchedAllocations(t *testing.T) {
+func TestBrokerPublishUnmatchedValueAllocations(t *testing.T) {
 	var b topic.Broker
 	_ = b.Subscribe[string]().Topics(t.Context())
 	value := smallAllocationTopic{sequence: 1, enabled: true}
@@ -392,7 +392,7 @@ func TestPublishUnmatchedAllocations(t *testing.T) {
 	}
 }
 
-func TestPublishPreboxedInterfaceAllocations(t *testing.T) {
+func TestBrokerPublishValueHeldInInterfaceAllocations(t *testing.T) {
 	var b topic.Broker
 	topics := b.Subscribe[namer]().Topics(t.Context())
 	value := namer(&alpha{name: "alpha"})
@@ -406,7 +406,7 @@ func TestPublishPreboxedInterfaceAllocations(t *testing.T) {
 	}
 }
 
-func TestPublishPointerToInterfaceAllocations(t *testing.T) {
+func TestBrokerPublishPointerToInterfaceAllocations(t *testing.T) {
 	var b topic.Broker
 	topics := b.Subscribe[namer]().Topics(t.Context())
 	value := &alpha{name: "alpha"}
@@ -420,7 +420,7 @@ func TestPublishPointerToInterfaceAllocations(t *testing.T) {
 	}
 }
 
-func TestPublishValueToInterfaceFanoutAllocations(t *testing.T) {
+func TestBrokerPublishValueToInterfaceFanoutAllocations(t *testing.T) {
 	var b topic.Broker
 	first := b.Subscribe[namer]().Topics(t.Context())
 	second := b.Subscribe[namer]().Topics(t.Context())
@@ -436,7 +436,7 @@ func TestPublishValueToInterfaceFanoutAllocations(t *testing.T) {
 	}
 }
 
-func TestPublishFilteredAllocations(t *testing.T) {
+func TestBrokerPublishFilteredValueAllocations(t *testing.T) {
 	var b topic.Broker
 	_ = b.
 		Subscribe[smallAllocationTopic]().
@@ -454,7 +454,7 @@ func TestPublishFilteredAllocations(t *testing.T) {
 	}
 }
 
-func TestPublishConvertedAllocations(t *testing.T) {
+func TestBrokerPublishConvertedValueAllocations(t *testing.T) {
 	var b topic.Broker
 	topics := b.
 		Subscribe[target]().
@@ -473,7 +473,7 @@ func TestPublishConvertedAllocations(t *testing.T) {
 	}
 }
 
-func TestPublishFanoutAllocations(t *testing.T) {
+func TestBrokerPublishIdenticalTypeFanoutAllocations(t *testing.T) {
 	var b topic.Broker
 	first := b.Subscribe[smallAllocationTopic]().Topics(t.Context())
 	second := b.Subscribe[smallAllocationTopic]().Topics(t.Context())
@@ -494,7 +494,7 @@ type smallAllocationTopic struct {
 	enabled  bool
 }
 
-func TestBrokerIndependent(t *testing.T) {
+func TestBrokerInstancesAreIndependent(t *testing.T) {
 	var first topic.Broker
 	var second topic.Broker
 	firstTopics := first.Subscribe[string]().Topics(t.Context())
@@ -536,7 +536,7 @@ func TestBrokerZeroValue(t *testing.T) {
 	}
 }
 
-func TestFromFilter(t *testing.T) {
+func TestReceiverFromFilters(t *testing.T) {
 	var b topic.Broker
 	topics := b.
 		Subscribe[int]().
@@ -559,7 +559,7 @@ func TestFromFilter(t *testing.T) {
 	}
 }
 
-func TestFromConvertsAndFilters(t *testing.T) {
+func TestReceiverFromConvertsAndFilters(t *testing.T) {
 	var b topic.Broker
 	topics := b.
 		Subscribe[target]().
@@ -582,7 +582,7 @@ func TestFromConvertsAndFilters(t *testing.T) {
 	}
 }
 
-func TestSubscribeCancelConcurrentPublish(t *testing.T) {
+func TestReceiverTopicsCancellationDuringPublish(t *testing.T) {
 	for range 100 {
 		var b topic.Broker
 		ctx, cancel := context.WithCancel(t.Context())

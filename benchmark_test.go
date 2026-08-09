@@ -29,8 +29,8 @@ type marked interface {
 
 func (small) topic() {}
 
-func BenchmarkPublish(b *testing.B) {
-	b.Run("without_subscribers", func(b *testing.B) {
+func BenchmarkBrokerPublishRouting(b *testing.B) {
+	b.Run("no_subscribers", func(b *testing.B) {
 		var broker topic.Broker
 		b.ReportAllocs()
 		b.ResetTimer()
@@ -41,7 +41,7 @@ func BenchmarkPublish(b *testing.B) {
 		reportMetrics(b, int64(b.N), 0)
 	})
 
-	b.Run("unmatched", func(b *testing.B) {
+	b.Run("unmatched_value", func(b *testing.B) {
 		var broker topic.Broker
 		ctx, cancel := context.WithCancel(b.Context())
 		topics := broker.Subscribe[string]().Topics(ctx)
@@ -60,7 +60,7 @@ func BenchmarkPublish(b *testing.B) {
 		reportMetrics(b, int64(b.N), 0)
 	})
 
-	b.Run("filtered", func(b *testing.B) {
+	b.Run("rejected_mapping", func(b *testing.B) {
 		var broker topic.Broker
 		ctx, cancel := context.WithCancel(b.Context())
 		topics := broker.Subscribe[small]().
@@ -82,8 +82,8 @@ func BenchmarkPublish(b *testing.B) {
 	})
 }
 
-func BenchmarkDelivery(b *testing.B) {
-	b.Run("direct", func(b *testing.B) {
+func BenchmarkBrokerPublishDelivery(b *testing.B) {
+	b.Run("identical_type", func(b *testing.B) {
 		var broker topic.Broker
 		ctx, cancel := context.WithCancel(b.Context())
 		topics := broker.Subscribe[small]().Topics(ctx)
@@ -102,7 +102,7 @@ func BenchmarkDelivery(b *testing.B) {
 		reportMetrics(b, int64(b.N), int64(b.N))
 	})
 
-	b.Run("interface_pointer", func(b *testing.B) {
+	b.Run("pointer_to_interface", func(b *testing.B) {
 		var broker topic.Broker
 		ctx, cancel := context.WithCancel(b.Context())
 		topics := broker.Subscribe[marked]().Topics(ctx)
@@ -121,7 +121,7 @@ func BenchmarkDelivery(b *testing.B) {
 		reportMetrics(b, int64(b.N), int64(b.N))
 	})
 
-	b.Run("interface_value", func(b *testing.B) {
+	b.Run("value_to_interface", func(b *testing.B) {
 		var broker topic.Broker
 		ctx, cancel := context.WithCancel(b.Context())
 		topics := broker.Subscribe[marked]().Topics(ctx)
@@ -140,7 +140,7 @@ func BenchmarkDelivery(b *testing.B) {
 		reportMetrics(b, int64(b.N), int64(b.N))
 	})
 
-	b.Run("converted", func(b *testing.B) {
+	b.Run("mapped", func(b *testing.B) {
 		var broker topic.Broker
 		ctx, cancel := context.WithCancel(b.Context())
 		topics := broker.Subscribe[converted]().
@@ -163,7 +163,7 @@ func BenchmarkDelivery(b *testing.B) {
 		reportMetrics(b, int64(b.N), int64(b.N))
 	})
 
-	b.Run("filtered", func(b *testing.B) {
+	b.Run("accepted_filter", func(b *testing.B) {
 		var broker topic.Broker
 		ctx, cancel := context.WithCancel(b.Context())
 		topics := broker.Subscribe[small]().
@@ -187,7 +187,7 @@ func BenchmarkDelivery(b *testing.B) {
 	})
 }
 
-func BenchmarkDeliveryPayload(b *testing.B) {
+func BenchmarkBrokerPublishPayloadSize(b *testing.B) {
 	b.Run("16B", func(b *testing.B) {
 		var broker topic.Broker
 		ctx, cancel := context.WithCancel(b.Context())
@@ -226,7 +226,7 @@ func BenchmarkDeliveryPayload(b *testing.B) {
 	})
 }
 
-func BenchmarkDeliveryBufferLen(b *testing.B) {
+func BenchmarkBrokerPublishBufferCapacity(b *testing.B) {
 	for _, bufferLen := range []int{1, 10, topic.DefaultBufferLen, 100, 1000} {
 		b.Run(fmt.Sprintf("len=%d", bufferLen), func(b *testing.B) {
 			var broker topic.Broker
@@ -252,7 +252,7 @@ func BenchmarkDeliveryBufferLen(b *testing.B) {
 	}
 }
 
-func BenchmarkPublishFullBuffer(b *testing.B) {
+func BenchmarkBrokerPublishFullBuffer(b *testing.B) {
 	for _, bufferLen := range []int{0, 1, topic.DefaultBufferLen, 1000} {
 		b.Run(fmt.Sprintf("len=%d", bufferLen), func(b *testing.B) {
 			var broker topic.Broker
@@ -278,7 +278,7 @@ func BenchmarkPublishFullBuffer(b *testing.B) {
 	}
 }
 
-func BenchmarkDeliveryFanout(b *testing.B) {
+func BenchmarkBrokerPublishFanout(b *testing.B) {
 	for _, subscribers := range []int{1, 4, 16} {
 		b.Run(fmt.Sprintf("subscribers=%d", subscribers), func(b *testing.B) {
 			fanoutDelivery(b, subscribers)
@@ -286,7 +286,7 @@ func BenchmarkDeliveryFanout(b *testing.B) {
 	}
 }
 
-func BenchmarkPublishParallel(b *testing.B) {
+func BenchmarkBrokerPublishParallel(b *testing.B) {
 	publishParallel(b)
 }
 
@@ -326,7 +326,7 @@ func publishParallel(b *testing.B) {
 	reportMetrics(b, int64(b.N), delivered.Load())
 }
 
-func BenchmarkSubscriptionLifecycle(b *testing.B) {
+func BenchmarkReceiverTopicsLifecycle(b *testing.B) {
 	var broker topic.Broker
 	b.ReportAllocs()
 	b.ResetTimer()
@@ -344,7 +344,7 @@ func BenchmarkSubscriptionLifecycle(b *testing.B) {
 	}
 }
 
-func BenchmarkSubscriptionLifecycleWithBufferLen(b *testing.B) {
+func BenchmarkReceiverTopicsLifecycleWithBufferLen(b *testing.B) {
 	var broker topic.Broker
 	option := topic.WithBufferLen[small](100)
 	b.ReportAllocs()

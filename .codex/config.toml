@@ -1,0 +1,12 @@
+[mcp_servers.gograph]
+enabled = true
+command = "gograph"
+args = ["mcp", "."]
+
+[[hooks.PreToolUse]]
+matcher = "^Bash$"
+
+[[hooks.PreToolUse.hooks]]
+type = "command"
+command = "gograph"
+args = ["hook-guard"]

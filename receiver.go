@@ -9,9 +9,10 @@ import (
 // resulting topic should be delivered.
 type adapter[T any] func(any) (topic T, matched, accepted bool)
 
-// Receiver configures a subscription for values of topic type T. Build a
-// receiver with [Broker.Subscribe], then call [Receiver.Topics]. A [Receiver]
-// must not be modified concurrently with [Receiver.Topics].
+// Receiver configures subscriptions for values of topic type T. Build a
+// receiver with [Broker.Subscribe], then call [Receiver.Topics]. Do not call
+// [Receiver.From] concurrently with another call to [Receiver.From] or
+// [Receiver.Topics].
 type Receiver[T any] struct {
 	broker    *Broker
 	adapters  []adapter[T]
@@ -32,7 +33,7 @@ func WithBufferLen[T any](length int) Option[Receiver[T]] {
 // From adds a source mapping from published topic type M to receiver topic type
 // T. The callback may convert, filter, or do both; its bool determines whether
 // the result is delivered. Mappings are checked in registration order before
-// ordinary assignability, and the first matching source type owns the decision.
+// direct type assertion, and the first matching source type owns the decision.
 func (r *Receiver[T]) From[M any](fn func(M) (T, bool)) *Receiver[T] {
 	// Only the first mapping can always be dispatched solely from its exact
 	// source type. Later mappings may be shadowed by an earlier interface source,
@@ -52,9 +53,10 @@ func (r *Receiver[T]) From[M any](fn func(M) (T, bool)) *Receiver[T] {
 	return r
 }
 
-// Topics activates r and returns its value channel. The channel closes when ctx
-// is cancelled. Delivery is non-blocking; a value is dropped when the channel
-// is full.
+// Topics activates a new subscription configured by r and returns its value
+// channel. Each call creates an independent subscription. The channel closes
+// when ctx is cancelled. Delivery is non-blocking; a value is dropped when the
+// channel is full.
 func (r *Receiver[T]) Topics(ctx context.Context) <-chan T {
 	exact := r.exact
 	if len(r.adapters) == 0 {
