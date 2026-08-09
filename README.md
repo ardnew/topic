@@ -126,5 +126,7 @@ go test ./...
 go test -run '^$' -bench . -benchmem -count=3 ./...
 ```
 
+## Credits
+
 > [!NOTE]
 > OpenAI Codex contributed to this project as an AI agent.
