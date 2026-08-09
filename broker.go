@@ -13,16 +13,6 @@ const DefaultBufferLen = 64
 // Option configures a value of type T using the functional options pattern.
 type Option[T any] func(*T)
 
-// Valuer provides a topic value at publication time. [Broker.Publish] calls
-// TopicValue at most once, and only when the broker has subscribers. The
-// dynamic type of the returned value determines which subscribers receive it.
-//
-// Valuer is useful when constructing a topic is expensive or captures
-// time-sensitive information.
-type Valuer interface {
-	TopicValue() any
-}
-
 // Broker is a type-safe pub-sub dispatcher. Its zero value is ready for use.
 // A [Broker] must not be copied after first use.
 type Broker struct {
@@ -30,22 +20,14 @@ type Broker struct {
 	exact sync.Map
 }
 
-// Publish publishes topic. If topic implements [Valuer], Publish calls its
-// TopicValue method and publishes the returned value instead.
+// Publish publishes topic to subscribers whose topic type is satisfied by
+// topic's dynamic type.
 func (b *Broker) Publish[T any](topic T) {
 	snapshot := b.reg.snapshot()
 	if snapshot == nil {
 		return
 	}
-	if _, ok := any(topic).(Valuer); ok {
-		b.publishValue(snapshot, evaluate(topic))
-		return
-	}
 	b.publish(snapshot, topic)
-}
-
-func evaluate[T any](topic T) any {
-	return any(topic).(Valuer).TopicValue()
 }
 
 func (b *Broker) publish[T any](snapshot *registrySnapshot, topic T) {
@@ -54,8 +36,9 @@ func (b *Broker) publish[T any](snapshot *registrySnapshot, topic T) {
 		route.(*exactRoute[T]).publish(topic)
 	}
 
-	// Exact subscribers have already received topic without boxing it. Only
-	// construct an interface value if an assignability fallback is required.
+	// Exact subscribers have already received topic without boxing it. Box at
+	// most once when ordinary assignability must be evaluated, then share that
+	// interface value across the remaining subscribers.
 	var value any
 	boxed := false
 	for _, s := range *snapshot {
@@ -67,12 +50,6 @@ func (b *Broker) publish[T any](snapshot *registrySnapshot, topic T) {
 			boxed = true
 		}
 		s.send(value)
-	}
-}
-
-func (b *Broker) publishValue(snapshot *registrySnapshot, topic any) {
-	for _, s := range *snapshot {
-		s.send(topic)
 	}
 }
 

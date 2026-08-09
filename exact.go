@@ -5,7 +5,7 @@ import (
 	"sync/atomic"
 )
 
-// exactKey identifies one instantiated source type without using reflection.
+// exactKey identifies one instantiated publication type without reflection.
 // Empty values are allocation-free map keys; their dynamic types distinguish
 // exactKey[A] from exactKey[B].
 type exactKey[T any] struct{}

@@ -23,12 +23,6 @@ type message struct {
 	text string
 }
 
-type lazyMessage func() message
-
-func (f lazyMessage) TopicValue() any {
-	return f()
-}
-
 func ExampleBroker_Publish() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -42,21 +36,6 @@ func ExampleBroker_Publish() {
 	fmt.Println(topic.text)
 	// Output:
 	// hello
-}
-
-func ExampleValuer() {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	var b topic.Broker
-	topics := b.Subscribe[message]().Topics(ctx)
-
-	b.Publish(lazyMessage(func() message {
-		return message{text: "evaluated when published"}
-	}))
-
-	fmt.Println(receive(topics).text)
-	// Output:
-	// evaluated when published
 }
 
 func ExampleWithBufferLen() {
@@ -106,7 +85,7 @@ func ExampleBroker_Subscribe_multipleTopics() {
 	// true
 }
 
-func ExampleBroker_Subscribe_wildcard() {
+func ExampleBroker_Subscribe_any() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	var b topic.Broker
@@ -131,8 +110,8 @@ func ExampleBroker_Subscribe_interface() {
 	var b topic.Broker
 	topics := b.Subscribe[io.Reader]().Topics(ctx)
 
-	// The published topic type is automatically inferred as *strings.Reader,
-	// a concrete type that implements io.Reader.
+	// *strings.Reader implements io.Reader, so the interface subscription
+	// receives the concrete published value.
 	b.Publish(strings.NewReader("concrete reader"))
 	topic := receive(topics)
 	data, err := io.ReadAll(topic)
@@ -165,7 +144,7 @@ func ExampleReceiver_From_filter() {
 	// check this
 }
 
-func ExampleReceiver_From_assignableAndConverted() {
+func ExampleReceiver_From_directAndConverted() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	var b topic.Broker
@@ -178,7 +157,7 @@ func ExampleReceiver_From_assignableAndConverted() {
 		}).
 		Topics(ctx)
 
-	// A text value is directly assignable to the subscribed topic.
+	// A text value uses the receiver's direct text route.
 	b.Publish(text("direct"))
 	// A message value uses the subscriber's explicit From conversion.
 	b.Publish(message{text: "converted"})

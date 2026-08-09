@@ -11,16 +11,6 @@ import (
 
 const testTimeout = 3 * time.Second
 
-type lazyTopic struct {
-	calls *int
-	value any
-}
-
-func (t lazyTopic) TopicValue() any {
-	*t.calls = *t.calls + 1
-	return t.value
-}
-
 func TestSubscribeDirect(t *testing.T) {
 	var b topic.Broker
 	topics := b.Subscribe[string]().Topics(t.Context())
@@ -255,8 +245,6 @@ func TestSubscribeFanout(t *testing.T) {
 	}
 }
 
-// A namer subscription receives any concrete implementation without an
-// explicit [topic.Receiver.From] conversion.
 type namer interface{ Name() string }
 
 type alpha struct{ name string }
@@ -379,6 +367,128 @@ func TestPublishExactAllocations(t *testing.T) {
 	}
 }
 
+func TestPublishWithoutSubscribersAllocations(t *testing.T) {
+	var b topic.Broker
+	value := smallAllocationTopic{sequence: 1, enabled: true}
+
+	allocations := testing.AllocsPerRun(1000, func() {
+		b.Publish(value)
+	})
+	if allocations != 0 {
+		t.Fatalf("allocations = %v, want 0", allocations)
+	}
+}
+
+func TestPublishUnmatchedAllocations(t *testing.T) {
+	var b topic.Broker
+	_ = b.Subscribe[string]().Topics(t.Context())
+	value := smallAllocationTopic{sequence: 1, enabled: true}
+
+	allocations := testing.AllocsPerRun(1000, func() {
+		b.Publish(value)
+	})
+	if allocations != 1 {
+		t.Fatalf("allocations = %v, want 1", allocations)
+	}
+}
+
+func TestPublishPreboxedInterfaceAllocations(t *testing.T) {
+	var b topic.Broker
+	topics := b.Subscribe[namer]().Topics(t.Context())
+	value := namer(&alpha{name: "alpha"})
+
+	allocations := testing.AllocsPerRun(1000, func() {
+		b.Publish(value)
+		<-topics
+	})
+	if allocations != 0 {
+		t.Fatalf("allocations = %v, want 0", allocations)
+	}
+}
+
+func TestPublishPointerToInterfaceAllocations(t *testing.T) {
+	var b topic.Broker
+	topics := b.Subscribe[namer]().Topics(t.Context())
+	value := &alpha{name: "alpha"}
+
+	allocations := testing.AllocsPerRun(1000, func() {
+		b.Publish(value)
+		<-topics
+	})
+	if allocations != 0 {
+		t.Fatalf("allocations = %v, want 0", allocations)
+	}
+}
+
+func TestPublishValueToInterfaceFanoutAllocations(t *testing.T) {
+	var b topic.Broker
+	first := b.Subscribe[namer]().Topics(t.Context())
+	second := b.Subscribe[namer]().Topics(t.Context())
+	value := alpha{name: "alpha"}
+
+	allocations := testing.AllocsPerRun(1000, func() {
+		b.Publish(value)
+		<-first
+		<-second
+	})
+	if allocations != 1 {
+		t.Fatalf("allocations = %v, want 1", allocations)
+	}
+}
+
+func TestPublishFilteredAllocations(t *testing.T) {
+	var b topic.Broker
+	_ = b.
+		Subscribe[smallAllocationTopic]().
+		From(func(value smallAllocationTopic) (smallAllocationTopic, bool) {
+			return value, false
+		}).
+		Topics(t.Context())
+	value := smallAllocationTopic{sequence: 1, enabled: true}
+
+	allocations := testing.AllocsPerRun(1000, func() {
+		b.Publish(value)
+	})
+	if allocations != 0 {
+		t.Fatalf("allocations = %v, want 0", allocations)
+	}
+}
+
+func TestPublishConvertedAllocations(t *testing.T) {
+	var b topic.Broker
+	topics := b.
+		Subscribe[target]().
+		From(func(value smallAllocationTopic) (target, bool) {
+			return target{summary: "converted"}, value.enabled
+		}).
+		Topics(t.Context())
+	value := smallAllocationTopic{sequence: 1, enabled: true}
+
+	allocations := testing.AllocsPerRun(1000, func() {
+		b.Publish(value)
+		<-topics
+	})
+	if allocations != 0 {
+		t.Fatalf("allocations = %v, want 0", allocations)
+	}
+}
+
+func TestPublishFanoutAllocations(t *testing.T) {
+	var b topic.Broker
+	first := b.Subscribe[smallAllocationTopic]().Topics(t.Context())
+	second := b.Subscribe[smallAllocationTopic]().Topics(t.Context())
+	value := smallAllocationTopic{sequence: 1, enabled: true}
+
+	allocations := testing.AllocsPerRun(1000, func() {
+		b.Publish(value)
+		<-first
+		<-second
+	})
+	if allocations != 0 {
+		t.Fatalf("allocations = %v, want 0", allocations)
+	}
+}
+
 type smallAllocationTopic struct {
 	sequence uint64
 	enabled  bool
@@ -423,54 +533,6 @@ func TestBrokerZeroValue(t *testing.T) {
 		}
 	case <-time.After(testTimeout):
 		t.Fatal("timed out waiting for topic")
-	}
-}
-
-func TestPublishValuerWithoutSubscribers(t *testing.T) {
-	var b topic.Broker
-	calls := 0
-	b.Publish(lazyTopic{calls: &calls, value: "discarded"})
-
-	if calls != 0 {
-		t.Fatalf("TopicValue calls = %d, want 0", calls)
-	}
-}
-
-func TestPublishValuerFanout(t *testing.T) {
-	var b topic.Broker
-	firstTopics := b.Subscribe[string]().Topics(t.Context())
-	secondTopics := b.Subscribe[string]().Topics(t.Context())
-	calls := 0
-
-	b.Publish(&lazyTopic{calls: &calls, value: "shared"})
-
-	if calls != 1 {
-		t.Fatalf("TopicValue calls = %d, want 1", calls)
-	}
-	for i, topics := range []<-chan string{firstTopics, secondTopics} {
-		select {
-		case got := <-topics:
-			if got != "shared" {
-				t.Fatalf("subscriber %d got %q, want %q", i, got, "shared")
-			}
-		case <-time.After(testTimeout):
-			t.Fatalf("subscriber %d timed out", i)
-		}
-	}
-}
-
-func TestPublishValuerAllocations(t *testing.T) {
-	var b topic.Broker
-	topics := b.Subscribe[string]().Topics(t.Context())
-	calls := 0
-	valuer := &lazyTopic{calls: &calls, value: "shared"}
-
-	allocations := testing.AllocsPerRun(1000, func() {
-		b.Publish(valuer)
-		<-topics
-	})
-	if allocations != 0 {
-		t.Fatalf("allocations = %v, want 0", allocations)
 	}
 }
 

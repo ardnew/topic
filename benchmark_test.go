@@ -102,7 +102,26 @@ func BenchmarkDelivery(b *testing.B) {
 		reportMetrics(b, int64(b.N), int64(b.N))
 	})
 
-	b.Run("interface", func(b *testing.B) {
+	b.Run("interface_pointer", func(b *testing.B) {
+		var broker topic.Broker
+		ctx, cancel := context.WithCancel(b.Context())
+		topics := broker.Subscribe[marked]().Topics(ctx)
+		defer closeTopics(cancel, topics)
+
+		topic := &small{enabled: true}
+		b.SetBytes(16)
+		b.ReportAllocs()
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			topic.seq = uint64(i)
+			broker.Publish(topic)
+			<-topics
+		}
+		b.StopTimer()
+		reportMetrics(b, int64(b.N), int64(b.N))
+	})
+
+	b.Run("interface_value", func(b *testing.B) {
 		var broker topic.Broker
 		ctx, cancel := context.WithCancel(b.Context())
 		topics := broker.Subscribe[marked]().Topics(ctx)

@@ -60,12 +60,7 @@ func (r *Receiver[T]) Topics(ctx context.Context) <-chan T {
 	if len(r.adapters) == 0 {
 		exact = directExactRegistration[T]()
 	}
-	return r.broker.topics(
-		ctx,
-		r.adapters,
-		exact,
-		r.bufferLen,
-	)
+	return r.broker.topics(ctx, r.adapters, exact, r.bufferLen)
 }
 
 type typedSender[T any] struct {
