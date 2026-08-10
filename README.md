@@ -2,131 +2,108 @@
 
 [![Go Reference](https://pkg.go.dev/badge/github.com/ardnew/topic.svg)](https://pkg.go.dev/github.com/ardnew/topic)
 
-`topic` is an in-memory generic publish-subscribe broker. Go types are the
-topics: publishers send ordinary values, and subscribers choose the types they
-want to receive. The broker uses no reflection or serialization.
-
-The zero value of `Broker` is ready for concurrent use.
-
-## Direct subscriptions
-
-Create a receiver for a type, activate it with `Topics`, then publish values of
-that type:
+An efficient in-process publish-subscribe broker for Go in which _**types are the topics**_.
+Publishers send ordinary values, and subscribers choose the types they want to receive.
 
 ```go
-ctx, cancel := context.WithCancel(context.Background())
+import "github.com/ardnew/topic"
+
+type Tick struct{ N int }
+
+var b topic.Broker            // zero value is ready to use
+
+ch, cancel := b.Subscribe[Tick]()
 defer cancel()
 
-type Event struct {
-	Message string
-}
-
-var broker topic.Broker
-events := broker.Subscribe[Event]().Topics(ctx)
-
-broker.Publish(Event{Message: "ready"})
-event := <-events
+b.Publish(Tick{N: 1})         // topic is inferred from the value
+fmt.Println((<-ch).N)         // 1
 ```
 
-Subscribe before publishing. `Topics` returns a new subscription channel each
-time it is called. Cancelling the context removes that subscription and closes
-its channel.
+No names, keys, identifiers, schemas, or registries: a Go type _is_ the topic.
+No reflection, serialization, or code generation.
+**Value publishing and delivery are _allocation-free_ in nearly all cases**.
+Zero dependencies (standard library only), but requires support for [generic methods] introduced in Go 1.27.
 
-## Interface subscriptions
-
-Routing follows ordinary Go type assertions. A subscription to an interface
-receives values of every published concrete type that implements it. Publishers
-do not need to name the interface:
+## API
 
 ```go
-readers := broker.Subscribe[io.Reader]().Topics(ctx)
+type Broker struct{ ... }
 
-broker.Publish(strings.NewReader("ready")) // Published as *strings.Reader.
-reader := <-readers                         // Received as io.Reader.
+func (b *Broker) Publish[T any](v T)
+func (b *Broker) Subscribe[T any](opts ...Option[T]) (<-chan T, func())
+
+type Option[T any] struct{ ... }
+
+func Buffer[T any](n int) Option[T]
+func From[S, P any](f func(S) (P, bool)) Option[P]
 ```
 
-A subscription to `any` receives every published value. The values are not
-wrapped or otherwise changed.
-
-## Mapping and filtering
-
-`Receiver.From` adds a mapping from a source type to the subscribed type. The
-callback can convert the value, filter it, or do both:
+Subscribing to an interface type receives every published value that implements it;
+publishers do not need to name the interface.
+Subscribing to `any` receives every value published with that broker.
 
 ```go
-type WireEvent struct {
-	Message string
-	Ready   bool
-}
-
-type Event struct {
-	Message string
-}
-
-events := broker.
-	Subscribe[Event]().
-	From(func(event WireEvent) (Event, bool) {
-		return Event{Message: event.Message}, event.Ready
-	}).
-	Topics(ctx)
-
-broker.Publish(WireEvent{Message: "ready", Ready: true})
-event := <-events
+errs, cancel := b.Subscribe(topic.Buffer[error](16))
 ```
 
-Mappings are checked in the order they were added. The first mapping whose
-source type accepts the published value decides whether that value is
-delivered. If no mapping matches, the broker tries a direct type assertion to
-the subscribed type. A mapping from a type to itself therefore acts as a filter.
-
-## Buffering and delivery
-
-Delivery is non-blocking and isolated per subscriber. Every subscription has a
-buffer of `DefaultBufferLen` values (64 by default). If one subscriber's
-channel cannot accept a value, that subscriber drops the value without delaying
-publishers or other subscribers.
-
-Set a different capacity when subscribing:
+`From` subscribes to an additional source type and converts it, statically.
+The same function can also be used to filter which values are delivered.
 
 ```go
-events := broker.Subscribe(
-	topic.WithBufferLen[Event](128),
-).Topics(ctx)
+ch, cancel := b.Subscribe(
+    topic.From(func(c Celsius) (Fahrenheit, bool) { return Fahrenheit(c*9/5 + 32), true }),
+    topic.From(func(f Fahrenheit) (Fahrenheit, bool) { return f, f > 0 }),
+)
 ```
 
-A capacity of zero creates an unbuffered channel, so delivery succeeds only
-while a receiver is already waiting. Negative capacities panic.
+## Delivery semantics
 
-## Allocation behavior
+Delivery is **best effort and lossy by design**. Each subscription has its own channel and capacity;
+if it cannot accept a value immediately,
+that value is dropped for that subscription and publication continues for everyone else.
+A slow or abandoned subscriber never blocks a publisher.
+Nothing is queued, retried, or persisted.
 
-Steady-state publication uses a typed fast path when the published and
-subscribed types are identical.
+Cancelling closes the subscription's channel,
+and after it returns nothing is ever sent on that channel again.
 
-| Publication path                                    | Heap allocations |
-| :-------------------------------------------------- | ---------------: |
-| No subscribers                                      |                0 |
-| Identical published and subscribed type             |                0 |
-| Pointer value delivered to an interface             |                0 |
-| Value already held in an interface                  |                0 |
-| Published type matches the first `From` source type |                0 |
-| Indirect value checked for interface assignment     |                1 |
+## Performance
 
-The indirect-value box is created at most once per publication and shared by
-all compatible interface subscribers. Because routing deliberately avoids
-reflection, the same box may be needed to determine that an indirect value is
-not assignable to a non-identical subscription.
+Publication is lock-free with respect to the broker,
+and allocates nothing on a broker whose subscriptions all name concrete types.
 
-Subscription setup is outside the steady-state guarantee: creating a channel,
-registration state, and cancellation goroutine allocates.
+Measured with `go test -run XXX -bench . -benchtime 500000x` on an AMD Ryzen Threadripper 1950X, Go 1.27rc2:
 
-Run the tests and benchmarks with:
+| Path                                       | Time   | Allocations |
+| ------------------------------------------ | ------ | ----------- |
+| no subscriber                              | 4.8 ns | 0           |
+| unmatched topic                            | 6.4 ns | 0           |
+| routing only (saturated subscriber)        | 32 ns  | 0           |
+| direct delivery, identical type            | 57 ns  | 0           |
+| pointer to interface subscription          | 71 ns  | 0           |
+| interface value to interface subscription  | 116 ns | 0           |
+| directly matched transformation            | 79 ns  | 0           |
+| directly matched filter (rejecting)        | 21 ns  | 0           |
+| non-pointer value to an `any` subscription | 140 ns | 1           |
+| saturated publication from 32 goroutines   | 47 ns  | 0           |
 
-```sh
+The single allocation is the one documented exception:
+placing a value that is neither pointer-shaped nor already an interface into an interface.
+It is done once per publication regardless of how many subscribers match.
+
+## Validation
+
+```
+gofmt -l .
+go vet ./...
 go test ./...
-go test -run '^$' -bench . -benchmem -count=3 ./...
+go test -race -count=2 ./...
+go test -run XXX -bench . ./...
 ```
 
 ## Credits
 
 > [!NOTE]
-> OpenAI Codex contributed to this project as an AI agent.
+> OpenAI Codex and Claude Opus contributed to this project as adversarial AI agents.
+
+[generic methods]: https://go.dev/issue/77273
