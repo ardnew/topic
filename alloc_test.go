@@ -205,6 +205,40 @@ func TestAllocsBoxedPathIsIndependentOfFanOut(t *testing.T) {
 	}
 }
 
+// TestAllocsSmallValueToAnySubscription records that the boxing allocation is
+// a cost of the value, not of the broker. The runtime keeps the first 256
+// integers in read-only storage and boxes any one-, two-, four-, or
+// eight-byte pointer-free value whose bits fall in that range by pointing at
+// it, so such a publication reaches an interface subscription for free.
+//
+// This is a property of the Go runtime rather than a promise of this package.
+// If it ever stops holding, the performance table in README.md is wrong and
+// this test is how that is discovered.
+func TestAllocsSmallValueToAnySubscription(t *testing.T) {
+	var b topic.Broker
+	ch, cancel := b.Subscribe(topic.Buffer[any](1))
+	defer cancel()
+	v := tick{n: 1} // one word, no pointers, and 1 < 256
+
+	got := allocs(t, func() {
+		b.Publish(v)
+		<-ch
+	})
+	if got != 0 {
+		t.Errorf("small value to an any subscription: %v allocs, want 0", got)
+	}
+
+	// The same type carrying a number outside that range must box normally,
+	// which is what makes the result above a statement about the value.
+	big := tick{n: 256}
+	if got := allocs(t, func() {
+		b.Publish(big)
+		<-ch
+	}); got != 1 {
+		t.Errorf("large value to an any subscription: %v allocs, want exactly 1", got)
+	}
+}
+
 // TestAllocsMixedWorlds records that the typed path's zero-allocation
 // guarantee is a property of the broker, not of the publication alone: a
 // single interface subscription anywhere on the broker forces the one

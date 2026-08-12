@@ -30,8 +30,8 @@ func Buffer[T any](n int) Option[T] {
 	}}
 }
 
-// From declares that a subscription to type S also accepts publications of type
-// P, converting each one with f.
+// From declares that a subscription to type Sub also accepts publications of
+// type Pub, converting each one with f.
 //
 // f returns the value to deliver and whether to deliver it: returning false
 // drops that value for this subscription, so the same option expresses
@@ -56,16 +56,16 @@ func Buffer[T any](n int) Option[T] {
 // f runs on the goroutine that published the value, before the value is
 // offered to the subscription's channel, so it should be cheap and must not
 // block.
-func From[S, P any](f func(S) (P, bool)) Option[P] {
-	src := newSource(func(send func(P)) func(S) {
-		return func(v S) {
+func From[Pub, Sub any](f func(Sub) (Pub, bool)) Option[Pub] {
+	src := newSource(func(send func(Pub)) func(Sub) {
+		return func(v Sub) {
 			if r, ok := f(v); ok {
 				send(r)
 			}
 		}
 	})
-	return Option[P]{
-		apply: func(c *config[P]) { c.sources = append(c.sources, src) },
+	return Option[Pub]{
+		apply: func(c *config[Pub]) { c.sources = append(c.sources, src) },
 	}
 }
 
@@ -93,9 +93,9 @@ type bound struct {
 	offer   func(key, x any) bool
 }
 
-// newSource builds a source for source type Src. sink turns the
-// subscription's send function into the typed sink for Src, which is where the
-// caller's conversion runs.
+// newSource builds a source for source type Src.
+// sink turns the subscription's send function into the typed sink for Src,
+// which is where the caller's conversion runs.
 func newSource[Src, T any](sink func(send func(T)) func(Src)) source[T] {
 	var (
 		key    = keyOf[Src]()

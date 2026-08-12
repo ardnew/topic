@@ -117,6 +117,24 @@ func BenchmarkPublishAny(b *testing.B) {
 	}
 }
 
+// BenchmarkPublishAnySmall measures that same path with a value the runtime
+// can box without allocating: one word wide, no pointers, and holding a
+// number the runtime keeps in its read-only table of small integers.
+func BenchmarkPublishAnySmall(b *testing.B) {
+	var br topic.Broker
+	ch, cancel := br.Subscribe(topic.Buffer[any](drainBuffer))
+	defer cancel()
+	v := tick{n: 1}
+
+	b.ReportAllocs()
+	for b.Loop() {
+		br.Publish(v)
+		if len(ch) == cap(ch) {
+			take(ch)
+		}
+	}
+}
+
 // BenchmarkPublishTransformed measures a directly matched typed conversion.
 func BenchmarkPublishTransformed(b *testing.B) {
 	var br topic.Broker

@@ -82,7 +82,9 @@
 // subscriptions match, on a broker whose subscriptions all name concrete
 // types. A subscription to an interface type or to any needs the value in an
 // interface, which costs one allocation per publication unless the value is
-// pointer-shaped or already held in an interface. That conversion is done once
+// pointer-shaped, already held in an interface, zero-sized, or a pointer-free
+// value of one, two, four, or eight bytes whose bits are below 256, which the
+// runtime boxes from read-only storage. That conversion is done once
 // and shared by every such subscription, so the cost never depends on how many
 // subscribers match, but it does apply to every publication on that broker.
 package topic
