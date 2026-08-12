@@ -1,6 +1,5 @@
-# Minimal in-process publish-subscribe broker for Go in which _**types are the topics**_.
-
-[![Go Reference](https://pkg.go.dev/badge/github.com/ardnew/topic.svg)](https://pkg.go.dev/github.com/ardnew/topic)
+# topic [![Go Reference](https://pkg.go.dev/badge/github.com/ardnew/topic.svg)](https://pkg.go.dev/github.com/ardnew/topic) 
+### Efficient in-process publish-subscribe broker for Go in which _**types are the topics**_
 
 Publishers send ordinary values, and subscribers choose the types they want to receive.
 No names, keys, identifiers, schemas, or registries: a Go type _is_ the topic.
@@ -20,9 +19,10 @@ fmt.Println((<-ch).N)         // 1
 ```
 
 Internally, subscriber routing is highly-optimized and features no reflection, serialization, code generation, or dependencies.
+
 **Publishing a value is _allocation-free_ [in nearly all cases](#performance)**.
 
-> [!NOTE]
+> [!IMPORTANT]
 > This module uses [generic methods], which sets the minimum supported toolchain version at Go 1.27.
 >
 > All source code is pure Go and standard library-only.
@@ -134,7 +134,7 @@ make flame BENCH=BenchmarkPublishParallel
 
 ## Credits
 
-> [!INFO]
+> [!NOTE]
 > OpenAI Codex and Claude Opus contributed to this project as adversarial AI agents.
 
 [generic methods]: https://go.dev/issue/77273
