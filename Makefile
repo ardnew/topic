@@ -340,10 +340,15 @@ threshold := $(or $(THRESHOLD),100)
 
 ci-install-go:
 	@goversion=$$(sed -n 's/^go //p' $(moddir)/go.mod); \
-	  echo "Installing go$${goversion} ($(goos)/$(goarch))..."; \
+	  echo "Installing go$${goversion} ($(goos)/$(goarch))..." >&2; \
 	  curl -fsSL "https://dl.google.com/go/go$${goversion}.$(goos)-$(goarch).tar.gz" \
 	    | sudo tar -C /usr/local -xz
-	@echo /usr/local/go/bin
+	@echo "Installing benchstat..." >&2; \
+	  /usr/local/go/bin/go install golang.org/x/perf/cmd/benchstat@latest
+	@goroot=$$(go env GOROOT 2>/dev/null || echo /usr/local/go); \
+	  gopath=$$(go env GOPATH 2>/dev/null || echo $${HOME}/go); \
+	  echo "$${goroot}/bin"; \
+	  echo "$${gopath}/bin"
 
 ci-cover: | $(output)
 	@echo

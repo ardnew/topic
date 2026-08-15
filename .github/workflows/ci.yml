@@ -43,9 +43,6 @@ jobs:
       - name: Set up Go
         run: make ci-install-go >> "$GITHUB_PATH"
 
-      - name: Install benchstat
-        run: go install golang.org/x/perf/cmd/benchstat@latest
-
       - name: Run benchmarks (new)
         run: make ci-bench-new OUTPUT=dist
 
