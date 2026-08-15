@@ -97,7 +97,7 @@ statflags := $(verbose) \
 .PHONY: prof cpu mem mutex block trace flame graph top list peek view
 .PHONY: escape asm bin stat save
 .PHONY: debug debug-test debug-bench debug-exec debug-attach debug-core
-.PHONY: ci-cover ci-bench-new ci-bench-compare
+.PHONY: ci-cover ci-bench-new ci-bench-compare ci-install-go
 
 all: test
 
@@ -319,6 +319,13 @@ debug-core:
 
 # CI targets.
 #
+# ci-install-go downloads and installs the Go toolchain version specified in
+# go.mod directly from dl.google.com, which supports pre-release versions
+# (e.g., rc, beta) that actions/setup-go cannot resolve.
+# Assumes linux/amd64; set GOARCH and GOOS to override.
+# After running, add /usr/local/go/bin to PATH:
+#   export PATH=/usr/local/go/bin:$PATH
+#
 # ci-cover runs tests with coverage and enforces a 100% statement threshold.
 # ci-bench-new records benchmark results for the current commit.
 # ci-bench-compare diffs the current results against a saved baseline; it
@@ -327,7 +334,16 @@ debug-core:
 #
 # THRESHOLD overrides the coverage floor:  make ci-cover THRESHOLD=90
 
+goarch    := $(or $(GOARCH),amd64)
+goos      := $(or $(GOOS),linux)
 threshold := $(or $(THRESHOLD),100)
+
+ci-install-go:
+	@goversion=$$(sed -n 's/^go //p' $(moddir)/go.mod); \
+	  echo "Installing go$${goversion} ($(goos)/$(goarch))..."; \
+	  curl -fsSL "https://dl.google.com/go/go$${goversion}.$(goos)-$(goarch).tar.gz" \
+	    | sudo tar -C /usr/local -xz
+	@echo /usr/local/go/bin
 
 ci-cover: | $(output)
 	@echo
