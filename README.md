@@ -1,4 +1,4 @@
-# topic [![Go Reference](https://pkg.go.dev/badge/github.com/ardnew/topic.svg)](https://pkg.go.dev/github.com/ardnew/topic) 
+# topic [![Go Reference](https://pkg.go.dev/badge/github.com/ardnew/topic.svg)](https://pkg.go.dev/github.com/ardnew/topic) [![CI](https://github.com/ardnew/topic/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/ardnew/topic/actions/workflows/ci.yml)
 ### Efficient in-process publish-subscribe broker for Go in which _**types are the topics**_
 
 Publishers send ordinary values, and subscribers choose the types they want to receive.

@@ -3,7 +3,7 @@ SHELL := $(firstword $(shell which bash sh))
 moddir := $(shell go list -f '{{.Dir}}' .)
 modimp := $(shell go list -f '{{.ImportPath}}' .)
 
-output := $(moddir)/dist
+output  := $(or $(OUTPUT),$(moddir)/dist)
 profile := $(output)/cover.out
 report := $(output)/cover.html
 
@@ -97,6 +97,7 @@ statflags := $(verbose) \
 .PHONY: prof cpu mem mutex block trace flame graph top list peek view
 .PHONY: escape asm bin stat save
 .PHONY: debug debug-test debug-bench debug-exec debug-attach debug-core
+.PHONY: ci-cover ci-bench-new ci-bench-compare
 
 all: test
 
@@ -315,6 +316,46 @@ debug-attach:
 debug-core:
 	@test -n '$(CORE)' || { echo 'no CORE: make debug-core CORE=<file>' >&2; exit 1; }
 	dlv $(dlvflags) core $(binary) $(CORE)
+
+# CI targets.
+#
+# ci-cover runs tests with coverage and enforces a 100% statement threshold.
+# ci-bench-new records benchmark results for the current commit.
+# ci-bench-compare diffs the current results against a saved baseline; it
+# warns on regressions but does not fail the build, because benchstat exits
+# 0 regardless and noise-only deltas are expected.
+#
+# THRESHOLD overrides the coverage floor:  make ci-cover THRESHOLD=90
+
+threshold := $(or $(THRESHOLD),100)
+
+ci-cover: | $(output)
+	@echo
+	@echo ci cover $(modimp)
+	@echo
+	go test -coverprofile=$(profile) -covermode=atomic -race $(package)
+	@pct=$$(go tool cover -func=$(profile) | awk '/^total:/{gsub(/%/,"",$$3); print $$3}'); \
+	  echo "Total coverage: $${pct}%"; \
+	  if awk "BEGIN { exit !($${pct} < $(threshold)) }"; then \
+	    echo "error: coverage $${pct}% is below threshold $(threshold)%" >&2; \
+	    exit 1; \
+	  fi
+
+ci-bench-new: | $(output)
+	@echo
+	@echo ci bench $(modimp)
+	@echo
+	go test $(statflags) $(package) | tee $(current)
+
+ci-bench-compare: | $(output)
+	@echo
+	@echo ci compare $(modimp)
+	@echo
+	@if [ -s $(baseline) ]; then \
+	  benchstat $(baseline) $(current); \
+	else \
+	  echo 'no baseline: skipping regression comparison'; \
+	fi
 
 $(output):
 	@mkdir -p $@

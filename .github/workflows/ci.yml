@@ -1,0 +1,77 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ["*"]
+  pull_request:
+    branches: [main]
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Test with coverage
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Run tests with coverage
+        run: make ci-cover OUTPUT=dist
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: dist/cover.out  # OUTPUT=dist/cover.out (Makefile: $(OUTPUT)/cover.out)
+          retention-days: 30
+
+  benchmark:
+    name: Benchmark regression check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Install benchstat
+        run: go install golang.org/x/perf/cmd/benchstat@latest
+
+      - name: Run benchmarks (new)
+        run: make ci-bench-new OUTPUT=dist
+
+      - name: Fetch baseline benchmarks from main
+        id: fetch-baseline
+        if: github.ref != 'refs/heads/main'
+        run: |
+          git fetch origin main --depth=1
+          git stash --include-untracked
+          make ci-bench-new OUTPUT=dist current=dist/bench.base.txt || true
+          git stash pop || true
+        continue-on-error: true
+
+      - name: Compare benchmarks against main baseline
+        if: steps.fetch-baseline.outcome == 'success'
+        run: make ci-bench-compare OUTPUT=dist
+
+      - name: Upload benchmark results
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmarks
+          path: dist/bench.new.txt  # OUTPUT=dist/bench.new.txt (Makefile: $(OUTPUT)/bench.new.txt)
+          retention-days: 30
