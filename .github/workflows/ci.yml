@@ -22,7 +22,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: ">=1.27.0-rc2"
+          go-version: "1.27rc3"
           check-latest: true
           cache: true
 
@@ -47,7 +47,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: ">=1.27.0-rc2"
+          go-version: "1.27rc3"
           check-latest: true
           cache: true
 
