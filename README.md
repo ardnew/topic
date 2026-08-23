@@ -74,7 +74,8 @@ Publication is lock-free with respect to the broker.
 
 Publication allocates nothing on a broker whose subscriptions all name concrete types.
 
-Measured with `go test -run XXX -bench . -benchtime 500000x` on an AMD Ryzen Threadripper 1950X, Go 1.27rc2:
+Median of ten runs with `go test -run XXX -bench . -benchtime 500000x -count 10 -benchmem`
+on an AMD Ryzen Threadripper 1950X, Go 1.27.0:
 
 | Path                                             | Time   | Allocations |
 | ------------------------------------------------ | ------ | ----------- |

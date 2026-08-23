@@ -1,3 +1,3 @@
 module github.com/ardnew/topic
 
-go 1.27rc3
+go 1.27.0
