@@ -111,7 +111,7 @@ on an AMD Ryzen Threadripper 1950X, Go 1.27.0:
 The single allocation is the one documented exception:
 
 - A subscription to an interface type will receive the value in an interface.
-- Boxing a value in an interface costs one allocation per publication, _unless_ the value is:
+- Boxing a value in an interface costs one allocation per publication, _unless_[^boxopt] the value is:
   - pointer-shaped, or
   - already held in an interface, or
   - zero-sized, or
@@ -119,8 +119,7 @@ The single allocation is the one documented exception:
     - `float32(0)`, `true`, `'x'` are free, but
     - `-1`, `float32(1)`, `[3]byte{}` are not.
 
-  > [!NOTE]
-  > This is an optimization of the Go runtime and not this module.
+[^boxopt]: This is an optimization of the Go runtime (see [walk/convert.go]:`func dataWord`) and not this module.
 
 **In either case, the interface conversion is always done once per publication regardless of the number of subscribers, and the allocation is never done if there are no subscribers.**
 
@@ -162,3 +161,4 @@ make flame BENCH=BenchmarkPublishParallel
 > OpenAI Codex and Claude Opus contributed to this project as adversarial AI agents.
 
 [generic methods]: https://go.dev/issue/77273
+[walk/convert.go]: https://github.com/golang/go/blob/master/src/cmd/compile/internal/walk/convert.go
